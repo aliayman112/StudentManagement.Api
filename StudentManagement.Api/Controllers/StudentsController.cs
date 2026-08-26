@@ -16,27 +16,27 @@ namespace StudentManagement.Api.Controllers
         }
 
         [HttpGet]
-        public IActionResult GetAllStudents()
+        public async Task<IActionResult> GetAllStudents()
         {
-            return Ok(_studentService.GetAllStudents());
+            return Ok(await _studentService.GetAllStudents());
         }
 
         [HttpGet("search")]
-        public IActionResult SearchByName([FromQuery] string name)
+        public async Task<IActionResult> SearchByNameOrDepartment([FromQuery] string text)
         {
-            return Ok(_studentService.SearchByName(name));
+            return Ok(await _studentService.SearchByNameOrDepartment(text));
         }
 
         [HttpGet("filter-by-age")]
-        public IActionResult FilterByAge()
+        public async Task<IActionResult> FilterByAge()
         {
-            return Ok(_studentService.FilterByAge());
+            return Ok(await _studentService.FilterByAge());
         }
 
         [HttpGet("{id}")]
-        public IActionResult GetStudentById(int id)
+        public async Task<IActionResult> GetStudentById(int id)
         {
-            var student = _studentService.GetStudentById(id);
+            var student = await _studentService.GetStudentById(id);
             if (student == null)
             {
                 return NotFound();
@@ -45,11 +45,11 @@ namespace StudentManagement.Api.Controllers
         }
 
         [HttpPost]
-        public IActionResult AddStudent([FromBody] CreateStudentDto newStudentDto)
+        public async Task<IActionResult> AddStudent([FromBody] CreateStudentDto newStudentDto)
         {
             try
             {
-                var created = _studentService.AddStudent(newStudentDto);
+                var created = await _studentService.AddStudent(newStudentDto);
                 return CreatedAtAction(nameof(GetStudentById), new { id = created.Id }, created);
             }
             catch (ArgumentException ex)
@@ -59,11 +59,11 @@ namespace StudentManagement.Api.Controllers
         }
 
         [HttpPut("{id}")]
-        public IActionResult UpdateStudent(int id, [FromBody] UpdateStudentDto updatedStudentDto)
+        public async Task<IActionResult> UpdateStudent(int id, [FromBody] UpdateStudentDto updatedStudentDto)
         {
             try
             {
-                var updated = _studentService.UpdateStudent(id, updatedStudentDto);
+                var updated = await _studentService.UpdateStudent(id, updatedStudentDto);
                 if (updated == null)
                 {
                     return NotFound();
@@ -77,9 +77,9 @@ namespace StudentManagement.Api.Controllers
         }
 
         [HttpDelete("{id}")]
-        public IActionResult DeleteStudent(int id)
+        public async Task<IActionResult> DeleteStudent(int id)
         {
-            var deleted = _studentService.DeleteStudent(id);
+            var deleted = await _studentService.DeleteStudent(id);
             if (!deleted)
             {
                 return NotFound();

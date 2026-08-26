@@ -1,30 +1,22 @@
-﻿using StudentManagement.Api.Dtos;
+﻿using Microsoft.EntityFrameworkCore;
+using StudentManagement.Api.Data;
+using StudentManagement.Api.Dtos;
 using StudentManagement.Api.Models;
 
 namespace StudentManagement.Api.Services
 {
     public class StudentService : IStudentService
     {
-        private static readonly List<Department> _departments = new()
-        {
-            new Department { Id = 1, Name = "IT" },
-            new Department { Id = 2, Name = "HR" },
-            new Department { Id = 3, Name = "Finance" },
-            new Department { Id = 4, Name = "Sales" }
-        };
+        private readonly ApplicationDbContext _context;
 
-        private static readonly List<Student> _students = new()
+        public StudentService(ApplicationDbContext context)
         {
-            new Student { Id = 1, Name = "Ali Ayman", Age = 20, DepartmentId = 1 },
-            new Student { Id = 2, Name = "Anwar el sadat", Age = 22, DepartmentId = 2 },
-            new Student { Id = 3, Name = "Hamdy el merghany", Age = 21, DepartmentId = 3 },
-            new Student { Id = 4, Name = "Ronald Araujo", Age = 17, DepartmentId = 1 },
-            new Student { Id = 5, Name = "Adolf Kitler", Age = 23, DepartmentId = 4 }
-        };
+            _context = context;
+        }
 
-        private StudentDetailsDto ToStudentDetailsDto(Student student)
+        private async Task<StudentDetailsDto> ToStudentDetailsDto(Student student)
         {
-            var department = _departments.FirstOrDefault(d => d.Id == student.DepartmentId);
+            var department = await _context.Departments.FirstOrDefaultAsync(d => d.Id == student.DepartmentId);
 
             return new StudentDetailsDto
             {
@@ -35,20 +27,47 @@ namespace StudentManagement.Api.Services
             };
         }
 
-        public List<StudentDetailsDto> GetAllStudents()
+        public async Task<List<StudentDetailsDto>> SearchByNameOrDepartment(string text)
         {
-            return _students.Select(s => ToStudentDetailsDto(s)).ToList();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return await GetAllStudents();
+            }
+
+            var query = from student in _context.Students
+                        join department in _context.Departments
+                            on student.DepartmentId equals department.Id
+                        where student.Name.Contains(text) || department.Name.Contains(text)
+                        select new StudentDetailsDto
+                        {
+                            Id = student.Id,
+                            Name = student.Name,
+                            Age = student.Age,
+                            DepartmentName = department.Name
+                        };
+
+            return await query.ToListAsync();
+        }
+        public async Task<List<StudentDetailsDto>> GetAllStudents()
+        {
+            var students = await _context.Students.ToListAsync();
+            var result = new List<StudentDetailsDto>();
+            foreach (var student in students)
+            {
+                result.Add(await ToStudentDetailsDto(student));
+            }
+            return result;
         }
 
-        public StudentDetailsDto? GetStudentById(int id)
+        public async Task<StudentDetailsDto?> GetStudentById(int id)
         {
-            var student = _students.FirstOrDefault(s => s.Id == id);
-            return student == null ? null : ToStudentDetailsDto(student);
+            var student = await _context.Students.FirstOrDefaultAsync(s => s.Id == id);
+            return student == null ? null : await ToStudentDetailsDto(student);
         }
 
-        public StudentDetailsDto AddStudent(CreateStudentDto newStudentDto)
+        public async Task<StudentDetailsDto> AddStudent(CreateStudentDto newStudentDto)
         {
-            var departmentExists = _departments.Any(d => d.Id == newStudentDto.DepartmentId);
+            var departmentExists = await _context.Departments.AnyAsync(d => d.Id == newStudentDto.DepartmentId);
             if (!departmentExists)
             {
                 throw new ArgumentException($"Department with id {newStudentDto.DepartmentId} does not exist.");
@@ -56,25 +75,26 @@ namespace StudentManagement.Api.Services
 
             var newStudent = new Student
             {
-                Id = _students.Any() ? _students.Max(s => s.Id) + 1 : 1,
                 Name = newStudentDto.Name,
                 Age = newStudentDto.Age,
                 DepartmentId = newStudentDto.DepartmentId
             };
 
-            _students.Add(newStudent);
-            return ToStudentDetailsDto(newStudent);
+            _context.Students.Add(newStudent);
+            await _context.SaveChangesAsync();
+
+            return await ToStudentDetailsDto(newStudent);
         }
 
-        public StudentDetailsDto? UpdateStudent(int id, UpdateStudentDto updatedStudentDto)
+        public async Task<StudentDetailsDto?> UpdateStudent(int id, UpdateStudentDto updatedStudentDto)
         {
-            var existingStudent = _students.FirstOrDefault(s => s.Id == id);
+            var existingStudent = await _context.Students.FirstOrDefaultAsync(s => s.Id == id);
             if (existingStudent == null)
             {
                 return null;
             }
 
-            var departmentExists = _departments.Any(d => d.Id == updatedStudentDto.DepartmentId);
+            var departmentExists = await _context.Departments.AnyAsync(d => d.Id == updatedStudentDto.DepartmentId);
             if (!departmentExists)
             {
                 throw new ArgumentException($"Department with id {updatedStudentDto.DepartmentId} does not exist.");
@@ -84,41 +104,56 @@ namespace StudentManagement.Api.Services
             existingStudent.Age = updatedStudentDto.Age;
             existingStudent.DepartmentId = updatedStudentDto.DepartmentId;
 
-            return ToStudentDetailsDto(existingStudent);
+            await _context.SaveChangesAsync();
+
+            return await ToStudentDetailsDto(existingStudent);
         }
 
-        public bool DeleteStudent(int id)
+        public async Task<bool> DeleteStudent(int id)
         {
-            var student = _students.FirstOrDefault(s => s.Id == id);
+            var student = await _context.Students.FirstOrDefaultAsync(s => s.Id == id);
             if (student == null)
             {
                 return false;
             }
 
-            _students.Remove(student);
+            _context.Students.Remove(student);
+            await _context.SaveChangesAsync();
             return true;
         }
 
-        public List<StudentDetailsDto> SearchByName(string name)
+        public async Task<List<StudentDetailsDto>> SearchByName(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
-                return GetAllStudents();
+                return await GetAllStudents();
             }
 
-            return _students
-                .Where(s => s.Name.Contains(name, StringComparison.OrdinalIgnoreCase))
-                .Select(s => ToStudentDetailsDto(s))
-                .ToList();
+            var students = await _context.Students
+                .Where(s => s.Name.Contains(name))
+                .ToListAsync();
+
+            var result = new List<StudentDetailsDto>();
+            foreach (var student in students)
+            {
+                result.Add(await ToStudentDetailsDto(student));
+            }
+            return result;
         }
 
-        public List<StudentDetailsDto> FilterByAge()
+        public async Task<List<StudentDetailsDto>> FilterByAge()
         {
-            return _students
+            var students = await _context.Students
                 .Where(s => s.Age >= 18 && s.Age <= 22)
                 .OrderBy(s => s.Age)
-                .Select(s => ToStudentDetailsDto(s))
-                .ToList();
+                .ToListAsync();
+
+            var result = new List<StudentDetailsDto>();
+            foreach (var student in students)
+            {
+                result.Add(await ToStudentDetailsDto(student));
+            }
+            return result;
         }
     }
 }
